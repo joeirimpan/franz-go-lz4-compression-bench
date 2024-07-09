@@ -49,6 +49,18 @@ func BenchmarkDecompress(b *testing.B) {
 		}
 	})
 
+	b.Run("with-buf-extra-copy", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			_, err := d.decompressWithBufAndExtraCopy(compressedData, codecLZ4)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
 	b.Run("with-pool", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()

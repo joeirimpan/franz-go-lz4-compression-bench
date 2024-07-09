@@ -53,20 +53,6 @@ func (d *decompressor) decompress(src []byte, codec byte) ([]byte, error) {
 		}
 
 		return out.Bytes(), nil
-	case codecGzip:
-		ungz := d.ungzPool.Get().(*gzip.Reader)
-		defer d.ungzPool.Put(ungz)
-		if err := ungz.Reset(bytes.NewReader(src)); err != nil {
-			return nil, err
-		}
-
-		out := new(bytes.Buffer)
-		_, err := io.Copy(out, ungz)
-		if err != nil {
-			return nil, err
-		}
-
-		return out.Bytes(), nil
 	default:
 		return nil, errors.New("unsupported codec")
 	}
@@ -88,18 +74,24 @@ func (d *decompressor) decompressWithBuf(src []byte, codec byte) ([]byte, error)
 			return nil, err
 		}
 
-		return append([]byte(nil), d.buf.Bytes()...), nil
+		return d.buf.Bytes(), nil
+	default:
+		return nil, errors.New("unsupported codec")
+	}
+}
 
-	case codecGzip:
-		ungz := d.ungzPool.Get().(*gzip.Reader)
-		defer d.ungzPool.Put(ungz)
-		if err := ungz.Reset(bytes.NewReader(src)); err != nil {
-			return nil, err
-		}
+func (d *decompressor) decompressWithBufAndExtraCopy(src []byte, codec byte) ([]byte, error) {
+	switch codecType(codec) {
+	case codecNone:
+		return src, nil
+	case codecLZ4:
+		unlz4 := d.unlz4Pool.Get().(*lz4.Reader)
+		defer d.unlz4Pool.Put(unlz4)
+		unlz4.Reset(bytes.NewReader(src))
 
 		d.buf.Reset()
 
-		_, err := io.Copy(d.buf, ungz)
+		_, err := io.Copy(d.buf, unlz4)
 		if err != nil {
 			return nil, err
 		}
@@ -126,26 +118,6 @@ func (d *decompressor) decompressWithPooling(src []byte, codec byte) ([]byte, er
 		}()
 
 		_, err := io.Copy(out, unlz4)
-		if err != nil {
-			return nil, err
-		}
-
-		return append([]byte(nil), out.Bytes()...), nil
-
-	case codecGzip:
-		ungz := d.ungzPool.Get().(*gzip.Reader)
-		defer d.ungzPool.Put(ungz)
-		if err := ungz.Reset(bytes.NewReader(src)); err != nil {
-			return nil, err
-		}
-
-		out := d.bufferPool.Get().(*bytes.Buffer)
-		defer func() {
-			out.Reset()
-			d.bufferPool.Put(out)
-		}()
-
-		_, err := io.Copy(out, ungz)
 		if err != nil {
 			return nil, err
 		}
