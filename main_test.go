@@ -37,29 +37,29 @@ func BenchmarkDecompress(b *testing.B) {
 		}
 	})
 
-	b.Run("with-buf", func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
+	// b.Run("with-buf", func(b *testing.B) {
+	// 	b.ResetTimer()
+	// 	b.ReportAllocs()
 
-		for i := 0; i < b.N; i++ {
-			_, err := d.decompressWithBuf(compressedData, codecLZ4)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
+	// 	for i := 0; i < b.N; i++ {
+	// 		_, err := d.decompressWithBuf(compressedData, codecLZ4)
+	// 		if err != nil {
+	// 			b.Fatal(err)
+	// 		}
+	// 	}
+	// })
 
-	b.Run("with-buf-extra-copy", func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
+	// b.Run("with-buf-extra-copy", func(b *testing.B) {
+	// 	b.ResetTimer()
+	// 	b.ReportAllocs()
 
-		for i := 0; i < b.N; i++ {
-			_, err := d.decompressWithBufAndExtraCopy(compressedData, codecLZ4)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
+	// 	for i := 0; i < b.N; i++ {
+	// 		_, err := d.decompressWithBufAndExtraCopy(compressedData, codecLZ4)
+	// 		if err != nil {
+	// 			b.Fatal(err)
+	// 		}
+	// 	}
+	// })
 
 	b.Run("with-pool", func(b *testing.B) {
 		b.ResetTimer()
@@ -67,6 +67,30 @@ func BenchmarkDecompress(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			_, err := d.decompressWithPooling(compressedData, codecLZ4)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("with-slice-writer", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			_, err := d.decompressWithSliceWriter(compressedData, codecLZ4)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("with-bytebufferpool", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			_, err := d.decompressWithBytebufferpool(compressedData, codecLZ4)
 			if err != nil {
 				b.Fatal(err)
 			}

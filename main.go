@@ -2,16 +2,15 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"io"
 	"sync"
 
 	"github.com/pierrec/lz4"
+	"github.com/valyala/bytebufferpool"
 )
 
 type decompressor struct {
-	ungzPool  sync.Pool
 	unlz4Pool sync.Pool
 
 	bufferPool sync.Pool
@@ -20,11 +19,6 @@ type decompressor struct {
 
 func newDecompressor() *decompressor {
 	return &decompressor{
-		ungzPool: sync.Pool{
-			New: func() interface{} {
-				return new(gzip.Reader)
-			},
-		},
 		unlz4Pool: sync.Pool{
 			New: func() any { return lz4.NewReader(nil) },
 		},
@@ -112,10 +106,8 @@ func (d *decompressor) decompressWithPooling(src []byte, codec byte) ([]byte, er
 		unlz4.Reset(bytes.NewReader(src))
 
 		out := d.bufferPool.Get().(*bytes.Buffer)
-		defer func() {
-			out.Reset()
-			d.bufferPool.Put(out)
-		}()
+		out.Reset()
+		defer d.bufferPool.Put(out)
 
 		_, err := io.Copy(out, unlz4)
 		if err != nil {
@@ -123,6 +115,66 @@ func (d *decompressor) decompressWithPooling(src []byte, codec byte) ([]byte, er
 		}
 
 		return append([]byte(nil), out.Bytes()...), nil
+
+	default:
+		return nil, errors.New("unsupported codec")
+	}
+}
+
+// sliceWriter a reusable slice as an io.Writer
+type sliceWriter struct{ inner []byte }
+
+func (s *sliceWriter) Write(p []byte) (int, error) {
+	s.inner = append(s.inner, p...)
+	return len(p), nil
+}
+
+var sliceWriters = sync.Pool{New: func() any { r := make([]byte, 8<<10); return &sliceWriter{inner: r} }}
+
+func (d *decompressor) decompressWithSliceWriter(src []byte, codec byte) ([]byte, error) {
+	switch codecType(codec) {
+	case codecNone:
+		return src, nil
+	case codecLZ4:
+		unlz4 := d.unlz4Pool.Get().(*lz4.Reader)
+		defer d.unlz4Pool.Put(unlz4)
+		unlz4.Reset(bytes.NewReader(src))
+
+		dst := sliceWriters.Get().(*sliceWriter)
+		dst.inner = dst.inner[:0]
+		defer sliceWriters.Put(dst)
+
+		_, err := io.Copy(dst, unlz4)
+		if err != nil {
+			return nil, err
+		}
+
+		return append([]byte(nil), dst.inner...), nil
+
+	default:
+		return nil, errors.New("unsupported codec")
+	}
+}
+
+func (d *decompressor) decompressWithBytebufferpool(src []byte, codec byte) ([]byte, error) {
+	switch codecType(codec) {
+	case codecNone:
+		return src, nil
+	case codecLZ4:
+		unlz4 := d.unlz4Pool.Get().(*lz4.Reader)
+		defer d.unlz4Pool.Put(unlz4)
+		unlz4.Reset(bytes.NewReader(src))
+
+		bb := bytebufferpool.Get()
+		bb.Reset()
+		defer bytebufferpool.Put(bb)
+
+		_, err := io.Copy(bb, unlz4)
+		if err != nil {
+			return nil, err
+		}
+
+		return append([]byte(nil), bb.Bytes()...), nil
 
 	default:
 		return nil, errors.New("unsupported codec")
